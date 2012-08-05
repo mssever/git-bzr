@@ -4,6 +4,7 @@ from os.path import join as pjoin, abspath, isdir, isfile, dirname
 import sys
 import subprocess
 import re
+from optparse import OptionParser
 
 
 def add(name, location):
@@ -21,7 +22,47 @@ def add(name, location):
               "`git bzr fetch %(name)s`" % locals()
 
 
-def fetch(remote):
+def _get_filter(remote,include=False,exclude=False):
+
+    update=True
+    map_dir = get_map_dir(remote)
+    print "map_dir:", map_dir
+    if not include and not exclude:
+        f = open( map_dir +"/include", 'r')
+        include = f.readall()
+        f.close()
+        f = open( map_dir +"/exclude", 'r')
+        exclude = f.readall()
+        f.close()
+        update=False
+
+    if update:
+        if include:
+            f = open( map_dir +"/include", 'w+')
+            f.write(include)
+            f.close()
+        if exclude:
+            f = open( map_dir +"/exclude", 'w+')
+            f.write(exclude)
+            f.close()
+
+    bzr_filter=[]
+    if include:
+        bzr_filter+=['-i %s'%include]
+    if exclude:
+        bzr_filter+=[' -x %s'%exclude]
+
+    if bzr_filter:
+        bzr_filter = " ".join(bzr_filter)
+        bzr_filter = 'bzr fast-import-filter %s |'%bzr_filter
+    else:
+        bzr_filter = ""
+
+    return bzr_filter
+
+
+def fetch(remote, include=False, exclude=False):
+    print "remote",remote, "ilter:",include, exclude
     location = get_location(remote)
     git_map, bzr_map = get_maps(remote)
     if not isfile(git_map) and not isfile(bzr_map):
@@ -30,25 +71,32 @@ def fetch(remote):
         map_name = dirname(git_map)
         if not isdir(map_name):
             os.makedirs(map_name)
+
+        bzr_filter = _get_filter(remote,include,exclude)
+
         shcall('(bzr fast-export '
                '--plain '
                '--export-marks=%(bzr_map)s '
                '--git-branch=bzr/%(remote)s '
                '%(location)s) | '
+               '%(bzr_filter)s '
                'sed "s/reset\ refs\/tags\/version\ /reset\ refs\/tags\//" | '
                '(git fast-import '
                '--export-marks=%(git_map)s)'
              % locals())
+
     elif isfile(git_map) and isfile(bzr_map):
         print 'Updating remote', remote
         _do_colons(bzr_map, bzr_map, 'remove')
         old_rev = rev_parse('bzr/%s' % remote)
+        bzr_filter = _get_filter(remote)
         shcall('(bzr fast-export '
                '--plain '
                '--import-marks=%(bzr_map)s '
                '--export-marks=%(bzr_map)s '
                '--git-branch=bzr/%(remote)s '
                '%(location)s) | '
+               '%(bzr_filter)s '
                '(git fast-import '
                '--quiet '
                '--export-marks=%(git_map)s '
@@ -123,6 +171,10 @@ def shrun(cmd, ret_error=False, ret_code=False):
 def shcall(cmd):
     return subprocess.check_call(cmd, shell=True)
 
+def get_map_dir(remote):
+    git_dir = abspath(get_git_dir())
+    map_dir = pjoin(git_dir, 'bzr-git')
+    return map_dir
 
 def get_maps(remote):
     git_dir = abspath(get_git_dir())
@@ -157,34 +209,35 @@ def to_git_root():
     if up != '':
         os.chdir(up)
     
-
-def parse_args(argv, cmds):
-    program = argv.pop(0)
-    cmd_names = cmds.keys()
-    usage = 'Usage: %s {%s}' % (program, ', '.join(cmd_names))
-    if len(argv) == 0:
-        print usage
-        sys.exit()
-    cmd = argv.pop(0)
-    if cmd not in cmd_names:
-        print usage
-        sys.exit()
-    func, req_args = cmds[cmd]
-    if len(argv) != len(req_args):
-        print 'Usage: %s %s %s ' % (program,
-                                    cmd,
-                                    ' '.join(req_args))
-        sys.exit()
-    return func, argv
-
-
 def main():
-    cmds = {'add': (add, ('name', 'location')),
-            'fetch': (fetch, ('branchname',)),
-            'push': (push, ('branchname',))}
-    func, args = parse_args(sys.argv, cmds)
+    usage = 'Usage: %prog [options] arg'
+    parser = OptionParser(usage)
+    parser.add_option("-a","--add", dest="add", nargs=2, help="Adding new repository")
+    parser.add_option("-i","--include", dest="include", help="Filter repository including files")
+    parser.add_option("-x","--exlude", dest="exclude", help="Filter repository including files")
+    parser.add_option("-f","--fetch", dest="fetch",help="Clone/Update repo")
+    parser.add_option("-p","--push", dest="push", help="Push repos")
+    parser.add_option("-c","--clone", dest="clone", nargs=2, help="Push repos")
+    
+    (options, args) = parser.parse_args()
+
+    print options,args
+    if options.add and ( options.fetch or options.push or options.clone):
+        print "ups"
+    
     to_git_root()
-    func(*args)
+    if options.add: 
+        add(*options.add)
+
+    if options.fetch:
+        fetch(options.fetch, options.include, options.exclude)
+
+    if options.push:
+        push(options.push)
+
+    if options.clone:
+        add(*options.clone)
+        fetch(options.clone[0], options.include, options.exclude)
 
 
 if __name__ == '__main__':
