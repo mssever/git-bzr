@@ -128,12 +128,12 @@ def push(remote):
     bzr_map_colons = bzr_map + '_colons'
     _do_colons(bzr_map, bzr_map, 'add')
     shcall('(git fast-export '
-#         '--import-marks=%(git_map)s '
+         '--import-marks=%(git_map)s '
          '--export-marks=%(git_map)s '
          'HEAD) | '
          '(cd %(location)s && '
          'bzr fast-import '
-#         '--import-marks=%(bzr_map)s '
+         '--import-marks=%(bzr_map)s '
          '--export-marks=%(bzr_map)s -)' % locals())
 
 
