@@ -5,32 +5,41 @@ import sys
 import subprocess
 import re
 from tempfile import  NamedTemporaryFile
+import ConfigParser
 
+config_filename = '.bzr-git.cfg'
+config = ConfigParser.ConfigParser()
+config.read(config_filename)
 
 def add(name, location, filter=None):
-    print "filter:",filter
-    remotes = [r.strip() for r in shrun('git remote show').split('\n')]
+    remotes = [r.strip() for r in config.sections()]
     if name in remotes:
         raise OSError("There is already a remote with that name")
-    if shrun('git config git-bzr.%(name)s.location' % locals()) != "":
+    else:
+        config.add_section(name)
+
+
+    options = config.options(name)
+    if location in options:
         raise OSError("There is alread a git-bzr branch with that name")
+    else:
+        config.set(name,'location',location)
+
+
     if not isdir(pjoin(location, ".bzr")):
         raise OSError("%(location)s is not a bazaar repository" %
                       locals())
 
-    shrun('git config git-bzr.%(name)s.location %(location)s' %
-          locals())
-
     if not filter is None:
-        shrun('git config git-bzr.%(name)s.filter "%(filter)s"' %
-          locals())
+        config.set(name,'filter',filter)
 
     print "Bazaar branch %(name)s added. You can fetch it with " \
               "`git bzr fetch %(name)s`" % locals()
+    with open(config_filename, 'wb') as configfile:
+        config.write(configfile)
 
 
 def fetch(remote,export_file=None):
-    location = get_location(remote)
     git_map, bzr_map = get_maps(remote)
     bzr_filter = get_filter(remote)
     
@@ -44,9 +53,6 @@ def fetch(remote,export_file=None):
     if not isfile(git_map) and not isfile(bzr_map):
         print "There doesn't seem to be an existing refmap. "
         print "Doing an initial import"
-        map_name = dirname(git_map)
-        if not isdir(map_name):
-            os.makedirs(map_name)
 
         shcall('(bzr fast-export '
                '--plain '
@@ -158,18 +164,17 @@ def shcall(cmd):
 
 
 def get_maps(remote):
-    git_dir = abspath(get_git_dir())
-    map_dir = pjoin(git_dir, 'bzr-git')
-    git_map = pjoin(map_dir, '%s-git-map' % remote)
-    bzr_map = pjoin(map_dir, '%s-bzr-map' % remote)
+    git_map = '.%s-git-map' % remote
+    bzr_map = '.%s-bzr-map' % remote
     return git_map, bzr_map
 
 
 def get_location(remote):
-    out = shrun('git config git-bzr.%s.location' % remote).strip()
+    out = config.get(remote,'location')
     if out == "":
         raise OSError("Cannot find bazaar remote with name `%(s`."
                       % remote)
+    print out
     return out
 
 def get_filter(remote):
