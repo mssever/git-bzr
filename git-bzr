@@ -42,7 +42,7 @@ def add(name, location, filter=None):
 def fetch(remote,export_file=None):
     git_map, bzr_map = get_maps(remote)
     bzr_filter = get_filter(remote)
-    
+    location = get_location(remote) 
     if export_file is None:
         f = NamedTemporaryFile(delete=False)
         export_file = f.name
@@ -58,8 +58,8 @@ def fetch(remote,export_file=None):
                '--plain '
                '--export-marks=%(bzr_map)s '
                '--git-branch=bzr/%(remote)s '
-               '%(location)s)  '
-               #'sed "s/reset\ refs\/tags\/version\ /reset\ refs\/tags\//" '
+               '%(location)s)  | '
+               'sed "s/reset\ refs\/tags\/version\ /reset\ refs\/tags\//" '
                ' > %(export_file)s' % locals() )
                
         cmd = ''
@@ -80,7 +80,8 @@ def fetch(remote,export_file=None):
                '--import-marks=%(bzr_map)s '
                '--export-marks=%(bzr_map)s '
                '--git-branch=bzr/%(remote)s '
-               '%(location)s) '
+               '%(location)s) | '
+               'sed "s/reset\ refs\/tags\/version\ /reset\ refs\/tags\//" '
                ' > %(export_file)s' % locals() )
 
         cmd = ''
@@ -178,15 +179,15 @@ def get_location(remote):
     return out
 
 def get_filter(remote):
-    out = shrun('git config git-bzr.%s.filter' % remote).strip()
-    print "filter:",out
-    return out
+    return config.get(remote,'filter')
+    
 
 def get_git_dir():
     return rev_parse('--git-dir')
 
 
 def rev_parse(arg):
+    print 'git rev-parse %s' % arg
     return shrun('git rev-parse %s' % arg).strip()
 
 
@@ -223,7 +224,7 @@ def parse_args(argv, cmds):
 
 def main():
     cmds = {'add': (add, ('name', 'location', 'filter')),
-            'fetch': (fetch, ('branchname',)),
+            'fetch': (fetch, ('branchname','export_file')),
             'push': (push, ('branchname',))}
     func, args = parse_args(sys.argv, cmds)
 
